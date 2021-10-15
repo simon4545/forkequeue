@@ -1,7 +1,8 @@
-package forkequeue
+package queue
 
 import (
 	"encoding/binary"
+	"fmt"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"sync"
@@ -81,6 +82,9 @@ func (q *LevelQueue) Pop() ([]byte, error) {
 	for q.readPosition >= q.writePosition {
 		q.cond.Wait()
 	}
+
+	fmt.Println("pop read pos is :", q.readPosition)
+
 	pos := make([]byte, 8)
 	binary.BigEndian.PutUint64(pos, q.readPosition)
 	value, err := q.Db.Get(pos, q.roptions)
