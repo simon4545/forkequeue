@@ -14,11 +14,12 @@ type LevelQueue struct {
 	cond          *sync.Cond
 	readPosition  uint64
 	writePosition uint64
+	prefix 		  []byte
 	woptions      *opt.WriteOptions
 	roptions      *opt.ReadOptions
 }
 
-func CreateQueue(dbpath string) (*LevelQueue, error) {
+func CreateQueue(dbpath string,prefix []byte) (*LevelQueue, error) {
 	//options := &opt.Options{}
 
 	woptions := &opt.WriteOptions{}
@@ -44,11 +45,13 @@ func CreateQueue(dbpath string) (*LevelQueue, error) {
 	} else if writeBuffs != nil {
 		writePosition = binary.BigEndian.Uint64(writeBuffs)
 	}
-
+	var _prefix = make([]byte, len(prefix))
+	copy(_prefix, prefix)
 	q := LevelQueue{
 		Db:            db,
 		readPosition:  readPosition,
 		writePosition: writePosition,
+		prefix:			_prefix,
 		woptions:      woptions,
 		roptions:      roptions,
 	}
