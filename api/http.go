@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	queue2 "forkequeue/queue"
 	"github.com/gin-gonic/gin"
+	"sync"
+	"time"
 )
 
 var queue *queue2.LevelQueue
@@ -16,8 +18,32 @@ func NewRouter(q *queue2.LevelQueue) *gin.Engine {
 
 	pubGroup.POST("push", pushHandler)
 	pubGroup.POST("pop", popHandler)
+	pubGroup.POST("test-push", testPush)
+	pubGroup.POST("test-pop", testPop)
+
+	t = &Test{}
 
 	return router
+}
+
+type Test struct {
+	mutex sync.Mutex
+	name  string
+}
+
+var t *Test
+
+func testPush(c *gin.Context) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	OkWithMessage("push success", c)
+}
+
+func testPop(c *gin.Context) {
+	t.mutex.Lock()
+	defer t.mutex.Unlock()
+	time.Sleep(5 * time.Second)
+	OkWithMessage("pop success", c)
 }
 
 type PushData struct {

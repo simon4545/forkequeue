@@ -14,12 +14,12 @@ type LevelQueue struct {
 	cond          *sync.Cond
 	readPosition  uint64
 	writePosition uint64
-	prefix 		  []byte
+	prefix        []byte
 	woptions      *opt.WriteOptions
 	roptions      *opt.ReadOptions
 }
 
-func CreateQueue(dbpath string,prefix []byte) (*LevelQueue, error) {
+func CreateQueue(dbpath string, prefix []byte) (*LevelQueue, error) {
 	//options := &opt.Options{}
 
 	woptions := &opt.WriteOptions{}
@@ -51,7 +51,7 @@ func CreateQueue(dbpath string,prefix []byte) (*LevelQueue, error) {
 		Db:            db,
 		readPosition:  readPosition,
 		writePosition: writePosition,
-		prefix:			_prefix,
+		prefix:        _prefix,
 		woptions:      woptions,
 		roptions:      roptions,
 	}
@@ -83,6 +83,7 @@ func (q *LevelQueue) Pop() ([]byte, error) {
 	defer q.mutex.Unlock()
 
 	for q.readPosition >= q.writePosition {
+		fmt.Println("get pop msg", q.readPosition)
 		q.cond.Wait()
 	}
 

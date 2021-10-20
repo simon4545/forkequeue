@@ -42,7 +42,7 @@ type levelQueue struct {
 	exitSyncChan      chan int
 }
 
-func New(name string, dataPath string) *levelQueue {
+func NewQueue(name string, dataPath string) *levelQueue {
 	l := levelQueue{
 		name:              name,
 		dataPath:          dataPath,
