@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"forkequeue/internal/util"
 	"io/ioutil"
+	"log"
 	"math/rand"
+	"net/http"
 	"os"
 	"path"
 	"sync"
@@ -14,11 +16,23 @@ import (
 
 type Server struct {
 	sync.RWMutex
-	topicMap  map[string]*Topic
-	exitChan  chan int
-	waitGroup util.WaitGroupWrapper
-	isLoading int32
-	isExiting int32
+
+	opts atomic.Value
+
+	topicMap   map[string]*Topic
+	exitChan   chan int
+	waitGroup  util.WaitGroupWrapper
+	isLoading  int32
+	isExiting  int32
+	notifyChan chan interface{}
+}
+
+func (s *Server) getOpts() *Options {
+	return s.opts.Load().(*Options)
+}
+
+func (s *Server) storeOpts(opts *Options) {
+	s.opts.Store(opts)
 }
 
 type meta struct {
@@ -28,7 +42,7 @@ type meta struct {
 }
 
 func newMetadataFile(opts *Options) string {
-	return path.Join(opts.DataPath, "nsqd.dat")
+	return path.Join(opts.DataPath, "server-topic.dat")
 }
 
 func readOrEmpty(fn string) ([]byte, error) {
@@ -118,4 +132,89 @@ func (s *Server) PersistMetadata() error {
 	}
 
 	return nil
+}
+
+func (s *Server) GetTopic(topicName string) *Topic {
+	s.RLock()
+	t, ok := s.topicMap[topicName]
+	s.RUnlock()
+	if ok {
+		return t
+	}
+
+	s.Lock()
+
+	t, ok = s.topicMap[topicName]
+	if ok {
+		s.Unlock()
+		return t
+	}
+
+	t = NewTopic(topicName, s)
+	s.topicMap[topicName] = t
+
+	s.Unlock()
+
+	if atomic.LoadInt32(&s.isLoading) == 1 {
+		return t
+	}
+
+	t.Start()
+	return t
+}
+
+func (s *Server) Notify(v interface{}) {
+	loading := atomic.LoadInt32(&s.isLoading) == 1
+
+	s.waitGroup.Wrap(func() {
+		select {
+		case <-s.exitChan:
+		case s.notifyChan <- v:
+			if loading {
+				<-s.notifyChan
+			}
+			s.Lock()
+			err := s.PersistMetadata()
+			if err != nil {
+				log.Printf("failed to persist metadata - %s\n", err)
+			}
+			s.Unlock()
+			<-s.notifyChan
+		}
+	})
+}
+
+func (s *Server) Exit() {
+	if !atomic.CompareAndSwapInt32(&s.isExiting, 0, 1) {
+		return
+	}
+
+	s.Lock()
+	err := s.PersistMetadata()
+	if err != nil {
+		log.Printf("failed to persist metadata - %s\n", err)
+	}
+	log.Printf("closing topics\n")
+	for _, topic := range s.topicMap {
+		topic.Close()
+	}
+	s.Unlock()
+	close(s.exitChan)
+	s.waitGroup.Wait()
+}
+
+func New(opts *Options) *Server {
+	s := &Server{
+		topicMap:   make(map[string]*Topic),
+		exitChan:   make(chan int),
+		notifyChan: make(chan interface{}, 1),
+	}
+	s.storeOpts(opts)
+	return s
+}
+
+func (s *Server) Main() error {
+	httpServer := newHttpServer(s)
+	hs := http.Server{Addr: ":8989", Handler: httpServer.router}
+	return hs.ListenAndServe()
 }

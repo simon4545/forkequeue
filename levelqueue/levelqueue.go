@@ -30,7 +30,7 @@ type levelQueue struct {
 	wOptions *opt.WriteOptions
 	rOptions *opt.ReadOptions
 
-	// exposed via ReadChan()
+	// exposed via Pop()
 	readChan chan []byte
 
 	// internal channels
@@ -88,6 +88,10 @@ func (l *levelQueue) Close() error {
 
 	close(l.exitChan)
 	<-l.exitSyncChan
+
+	if l.ldb != nil {
+		return l.ldb.Close()
+	}
 
 	return nil
 }
