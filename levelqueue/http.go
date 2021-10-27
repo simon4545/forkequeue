@@ -1,11 +1,13 @@
 package levelqueue
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"forkequeue/internal/response"
 	"github.com/gin-gonic/gin"
 	"net/http"
+	"time"
 )
 
 type httpServer struct {
@@ -63,8 +65,18 @@ type PopData struct {
 }
 
 func (hs *httpServer) popHandler(c *gin.Context) {
+	var buf []byte
 	topic := hs.server.GetTopic("test")
-	buf := <-topic.ReadChan()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	select {
+	case <-ctx.Done():
+		response.FailWithMessage("pop timeout", c)
+		return
+	case buf = <-topic.ReadChan():
+	}
+
 	msg, err := decodeMessage(buf)
 	if err != nil {
 		response.FailWithMessage(err.Error(), c)
@@ -72,11 +84,13 @@ func (hs *httpServer) popHandler(c *gin.Context) {
 	}
 
 	var popData PopData
-	if err := json.Unmarshal(msg.Body, &popData.Data); err != nil {
+	var jsData PushData
+	if err := json.Unmarshal(msg.Body, &jsData); err != nil {
 		response.FailWithMessage(err.Error(), c)
 		return
 	}
 	popData.ID = msg.ID
+	popData.Data = jsData.Data
 
 	fmt.Println(string(msg.ID[:]))
 	response.OkWithData(popData, c)

@@ -20,7 +20,7 @@ type Message struct {
 	Timestamp int64
 	Attempts  uint16
 
-	// for in-flight handling
+	// for in-ack handling
 	deliveryTS time.Time
 	clientID   int64
 	pri        int64
@@ -86,6 +86,21 @@ func decodeMessage(b []byte) (*Message, error) {
 	copy(msg.ID[:], b[10:10+MsgIDLength])
 	msg.Body = b[10+MsgIDLength:]
 
+	return &msg, nil
+}
+
+func decodePendingMessage(b []byte) (*Message, error) {
+	var msg Message
+
+	if len(b) < minValidMsgLength+8 {
+		return nil, fmt.Errorf("invalid message buffer size (%d)", len(b))
+	}
+
+	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
+	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
+	copy(msg.ID[:], b[10:10+MsgIDLength])
+	msg.pri = int64(binary.BigEndian.Uint64(b[10+MsgIDLength : 10+MsgIDLength+8]))
+	msg.Body = b[10+MsgIDLength+8:]
 	return &msg, nil
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"forkequeue/internal/util"
+	"github.com/syndtr/goleveldb/leveldb"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -15,6 +16,7 @@ import (
 )
 
 type Server struct {
+	pendingDB *leveldb.DB
 	sync.RWMutex
 
 	opts atomic.Value
@@ -163,6 +165,16 @@ func (s *Server) GetTopic(topicName string) *Topic {
 	return t
 }
 
+func (s *Server) topics() []*Topic {
+	var topics []*Topic
+	s.RLock()
+	for _, t := range s.topicMap {
+		topics = append(topics, t)
+	}
+	s.RUnlock()
+	return topics
+}
+
 func (s *Server) Notify(v interface{}) {
 	loading := atomic.LoadInt32(&s.isLoading) == 1
 
@@ -172,6 +184,7 @@ func (s *Server) Notify(v interface{}) {
 		case s.notifyChan <- v:
 			if loading {
 				<-s.notifyChan
+				return
 			}
 			s.Lock()
 			err := s.PersistMetadata()
@@ -211,6 +224,16 @@ func New(opts *Options) *Server {
 	}
 	s.storeOpts(opts)
 	return s
+}
+
+func (s *Server) InitPendingDB() error {
+	filePath := path.Join(s.getOpts().DataPath, "topic-pending-msg")
+	db, err := leveldb.OpenFile(filePath, nil)
+	if err != nil {
+		return err
+	}
+	s.pendingDB = db
+	return nil
 }
 
 func (s *Server) Main() error {
