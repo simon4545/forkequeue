@@ -45,6 +45,9 @@ func NewTopic(topicName string, server *Server) *Topic {
 	t.queue = NewQueue(topicName, server.getOpts().DataPath)
 
 	t.initAckQueue()
+
+	t.waitGroup.Wrap(t.pendingMsgLoop)
+
 	t.server.Notify(t)
 	return t
 }
@@ -61,7 +64,7 @@ func (t *Topic) initAckQueue() {
 		now := time.Now().UnixNano()
 		key := iter.Key()
 		value := iter.Value()
-		msg, err := decodePendingMessage(value)
+		msg, err := decodeAckMsg(value)
 		if err != nil {
 			continue
 		}
@@ -71,7 +74,7 @@ func (t *Topic) initAckQueue() {
 			if err != nil {
 				continue
 			}
-			t.server.pendingDB.Delete(key, nil)
+			t.removeMsgInAckDB(key)
 		} else {
 			//add in memory Ack queue
 			err := t.pushInAckMsg(msg)
@@ -83,12 +86,53 @@ func (t *Topic) initAckQueue() {
 	}
 }
 
+func (t *Topic) pendingMsgLoop() {
+	workTicker := time.NewTicker(t.server.getOpts().QueueScanInterval)
+
+	select {
+	case <-t.exitChan:
+		goto exit
+	case <-t.startChan:
+	}
+
+	for {
+		select {
+		case <-workTicker.C:
+			now := time.Now().UnixNano()
+			t.processInAckQueue(now)
+		case <-t.exitChan:
+			goto exit
+		}
+	}
+
+exit:
+	log.Printf("TOPIC(%s): closing ... pendingMsgLoop", t.name)
+	workTicker.Stop()
+}
+
+func (t *Topic) FinishMessage(id MessageID) error {
+	msg, err := t.popInAckMsg(id)
+	if err != nil {
+		return err
+	}
+	t.removeFromInAckQueue(msg)
+
+	key := append([]byte(t.name), msg.ID[:]...)
+	return t.removeMsgInAckDB(key)
+}
+
 func (t *Topic) StartInAckTimeOut(msg *Message, timeout time.Duration) error {
 	now := time.Now()
 
 	msg.deliveryTS = now
 	msg.pri = now.Add(timeout).UnixNano()
-	err := t.pushInAckMsg(msg)
+
+	err := t.addToInAckDB(msg)
+	if err != nil {
+		return err
+	}
+
+	err = t.pushInAckMsg(msg)
 	if err != nil {
 		return err
 	}
@@ -130,12 +174,59 @@ func (t *Topic) addToInAckQueue(msg *Message) {
 func (t *Topic) removeFromInAckQueue(msg *Message) {
 	t.inAckMutex.Lock()
 	if msg.index == -1 {
-		// this item has already been popped off the pqueue
+		// this item has already been popped off the queue
 		t.inAckMutex.Unlock()
 		return
 	}
 	t.inAckQ.Remove(msg.index)
 	t.inAckMutex.Unlock()
+}
+
+func (t *Topic) addToInAckDB(msg *Message) error {
+	key := append([]byte(t.name), msg.ID[:]...)
+	buf := bufferPoolGet()
+	defer bufferPoolPut(buf)
+	_, err := msg.WriteToAckDB(buf)
+	if err != nil {
+		return err
+	}
+	return t.server.pendingDB.Put(key, buf.Bytes(), nil)
+}
+
+//remove leveldb in ack msg
+func (t *Topic) removeMsgInAckDB(key []byte) error {
+	return t.server.pendingDB.Delete(key, nil)
+}
+
+func (t *Topic) processInAckQueue(time int64) {
+	if t.Exiting() {
+		return
+	}
+	for {
+		t.inAckMutex.Lock()
+		msg, _ := t.inAckQ.PeekAndShift(time)
+		t.inAckMutex.Unlock()
+
+		if msg == nil {
+			return
+		}
+
+		_, err := t.popInAckMsg(msg.ID)
+		if err != nil {
+			return
+		}
+
+		err = t.put(msg)
+		if err != nil {
+			continue
+		}
+		key := append([]byte(t.name), msg.ID[:]...)
+		t.removeMsgInAckDB(key)
+	}
+}
+
+func (t *Topic) Exiting() bool {
+	return atomic.LoadInt32(&t.exitFlag) == 1
 }
 
 func (t *Topic) Start() {
@@ -177,6 +268,8 @@ func (t *Topic) Close() error {
 	log.Printf("TOPIC(%s): closing\n", t.name)
 
 	close(t.exitChan)
+
+	t.waitGroup.Wait()
 
 	return t.queue.Close()
 }

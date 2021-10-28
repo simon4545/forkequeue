@@ -64,6 +64,35 @@ func (m *Message) WriteTo(w io.Writer) (int64, error) {
 	return total, nil
 }
 
+func (m *Message) WriteToAckDB(w io.Writer) (int64, error) {
+	var buf [18]byte
+	var total int64
+
+	binary.BigEndian.PutUint64(buf[:8], uint64(m.Timestamp))
+	binary.BigEndian.PutUint16(buf[8:10], uint16(m.Attempts))
+	binary.BigEndian.PutUint64(buf[10:18], uint64(m.pri))
+
+	n, err := w.Write(buf[:])
+	total += int64(n)
+	if err != nil {
+		return total, err
+	}
+
+	n, err = w.Write(m.ID[:])
+	total += int64(n)
+	if err != nil {
+		return total, err
+	}
+
+	n, err = w.Write(m.Body)
+	total += int64(n)
+	if err != nil {
+		return total, err
+	}
+
+	return total, nil
+}
+
 // decodeMessage deserializes data (as []byte) and creates a new Message
 // message format:
 // [x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x][x]...
@@ -89,7 +118,7 @@ func decodeMessage(b []byte) (*Message, error) {
 	return &msg, nil
 }
 
-func decodePendingMessage(b []byte) (*Message, error) {
+func decodeAckMsg(b []byte) (*Message, error) {
 	var msg Message
 
 	if len(b) < minValidMsgLength+8 {
@@ -98,9 +127,10 @@ func decodePendingMessage(b []byte) (*Message, error) {
 
 	msg.Timestamp = int64(binary.BigEndian.Uint64(b[:8]))
 	msg.Attempts = binary.BigEndian.Uint16(b[8:10])
-	copy(msg.ID[:], b[10:10+MsgIDLength])
-	msg.pri = int64(binary.BigEndian.Uint64(b[10+MsgIDLength : 10+MsgIDLength+8]))
-	msg.Body = b[10+MsgIDLength+8:]
+	msg.pri = int64(binary.BigEndian.Uint64(b[10:18]))
+	copy(msg.ID[:], b[18:18+MsgIDLength])
+	msg.Body = b[18+MsgIDLength:]
+
 	return &msg, nil
 }
 

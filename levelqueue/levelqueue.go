@@ -156,6 +156,13 @@ func (l *levelQueue) modifyPosition() {
 	if err != nil {
 		log.Printf("QUEUE(%s)write read position(%d) err:%s", l.name, l.readPos, err)
 	}
+
+	binary.BigEndian.PutUint64(pos, l.readPos)
+	err = l.ldb.Delete(pos, l.wOptions)
+	if err != nil {
+		log.Printf("QUEUE(%s)delete read position(%d) data err:%s", l.name, l.readPos, err)
+	}
+
 	l.readPos = l.nextReadPos
 }
 

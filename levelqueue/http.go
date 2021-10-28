@@ -27,6 +27,7 @@ func newHttpServer(server *Server) *httpServer {
 
 	pubGroup.POST("push", hs.pushHandler)
 	pubGroup.POST("pop", hs.popHandler)
+	pubGroup.POST("ack", hs.finishHandler)
 	return hs
 }
 
@@ -65,7 +66,9 @@ type PopData struct {
 }
 
 func (hs *httpServer) popHandler(c *gin.Context) {
+	var msg *Message
 	var buf []byte
+	var err error
 	topic := hs.server.GetTopic("test")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -75,12 +78,13 @@ func (hs *httpServer) popHandler(c *gin.Context) {
 		response.FailWithMessage("pop timeout", c)
 		return
 	case buf = <-topic.ReadChan():
-	}
+		msg, err = decodeMessage(buf)
+		if err != nil {
+			response.FailWithMessage(err.Error(), c)
+			return
+		}
 
-	msg, err := decodeMessage(buf)
-	if err != nil {
-		response.FailWithMessage(err.Error(), c)
-		return
+		topic.StartInAckTimeOut(msg, topic.server.getOpts().MsgTimeout)
 	}
 
 	var popData PopData
@@ -94,5 +98,28 @@ func (hs *httpServer) popHandler(c *gin.Context) {
 
 	fmt.Println(string(msg.ID[:]))
 	response.OkWithData(popData, c)
+	return
+}
+
+type FinishAckData struct {
+	ID MessageID `json:"id" form:"id"`
+}
+
+func (hs *httpServer) finishHandler(c *gin.Context) {
+	var finAckData FinishAckData
+	if err := c.ShouldBindJSON(&finAckData); err != nil {
+		response.FailWithMessage(err.Error(), c)
+		return
+	}
+
+	topic := hs.server.GetTopic("test")
+	err := topic.FinishMessage(finAckData.ID)
+
+	if err != nil {
+		response.FailWithMessage(err.Error(), c)
+		return
+	}
+
+	response.Ok(c)
 	return
 }
