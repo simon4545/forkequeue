@@ -84,6 +84,7 @@ func (t *Topic) initAckQueue() {
 			t.addToInAckQueue(msg)
 		}
 	}
+	iter.Release()
 }
 
 func (t *Topic) pendingMsgLoop() {

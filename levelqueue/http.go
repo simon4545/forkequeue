@@ -3,9 +3,9 @@ package levelqueue
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"forkequeue/internal/response"
 	"github.com/gin-gonic/gin"
+	"log"
 	"net/http"
 	"time"
 )
@@ -32,19 +32,20 @@ func newHttpServer(server *Server) *httpServer {
 }
 
 type PushData struct {
-	Data interface{} `json:"data" form:"data"`
+	Data interface{} `json:"data" form:"data" binding:"required"`
 }
 
 func (hs *httpServer) pushHandler(c *gin.Context) {
 	var pushData PushData
 	if err := c.ShouldBindJSON(&pushData); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		log.Printf("err:%s\n", err.Error())
+		response.FailWithMessage("msg not exist", c)
 		return
 	}
 
 	b, err := json.Marshal(pushData)
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		response.FailWithMessage("encoding msg error", c)
 		return
 	}
 
@@ -52,7 +53,8 @@ func (hs *httpServer) pushHandler(c *gin.Context) {
 	msg := NewMessage(topic.GenerateID(), b)
 	err = topic.PutMessage(msg)
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		log.Printf("topic(%s) err:%s\n", topic.name, err.Error())
+		response.FailWithMessage("put msg error", c)
 		return
 	}
 
@@ -80,43 +82,49 @@ func (hs *httpServer) popHandler(c *gin.Context) {
 	case buf = <-topic.ReadChan():
 		msg, err = decodeMessage(buf)
 		if err != nil {
-			response.FailWithMessage(err.Error(), c)
+			response.FailWithMessage("decode queue msg error", c)
 			return
 		}
 
-		topic.StartInAckTimeOut(msg, topic.server.getOpts().MsgTimeout)
+		err = topic.StartInAckTimeOut(msg, 60*time.Second)
+		if err != nil {
+			log.Printf("topic(%s) err:%s\n", topic.name, err.Error())
+		}
 	}
 
 	var popData PopData
 	var jsData PushData
 	if err := json.Unmarshal(msg.Body, &jsData); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		log.Printf("topic(%s) err:%s\n", topic.name, err.Error())
+		response.FailWithMessage("decode msg error", c)
 		return
 	}
 	popData.ID = msg.ID
 	popData.Data = jsData.Data
 
-	fmt.Println(string(msg.ID[:]))
+	//fmt.Println(string(msg.ID[:]))
 	response.OkWithData(popData, c)
 	return
 }
 
 type FinishAckData struct {
-	ID MessageID `json:"id" form:"id"`
+	ID MessageID `json:"id" form:"id" binding:"required"`
 }
 
 func (hs *httpServer) finishHandler(c *gin.Context) {
 	var finAckData FinishAckData
 	if err := c.ShouldBindJSON(&finAckData); err != nil {
-		response.FailWithMessage(err.Error(), c)
+		log.Printf("err:%s\n", err.Error())
+		response.FailWithMessage("msg id not exist", c)
 		return
 	}
-
+	//log.Println("msg id :", finAckData.ID)
 	topic := hs.server.GetTopic("test")
 	err := topic.FinishMessage(finAckData.ID)
 
 	if err != nil {
-		response.FailWithMessage(err.Error(), c)
+		log.Printf("topic(%s) err:%s\n", topic.name, err.Error())
+		response.FailWithMessage("finish ack error", c)
 		return
 	}
 
