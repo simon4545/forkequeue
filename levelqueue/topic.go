@@ -200,6 +200,8 @@ func (t *Topic) removeMsgInAckDB(key []byte) error {
 }
 
 func (t *Topic) processInAckQueue(time int64) {
+	t.RLock()
+	defer t.RUnlock()
 	if t.Exiting() {
 		return
 	}
@@ -262,9 +264,12 @@ func (t *Topic) put(m *Message) error {
 }
 
 func (t *Topic) Close() error {
+	t.Lock()
 	if !atomic.CompareAndSwapInt32(&t.exitFlag, 0, 1) {
+		t.Unlock()
 		return errors.New("exiting")
 	}
+	t.Unlock()
 
 	log.Printf("TOPIC(%s): closing\n", t.name)
 

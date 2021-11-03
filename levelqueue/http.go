@@ -36,6 +36,12 @@ type PushData struct {
 }
 
 func (hs *httpServer) pushHandler(c *gin.Context) {
+	topicName := c.Query("topic")
+	if topicName == "" || topicName == "topic-pending-msg" {
+		response.FailWithMessage("topic name error", c)
+		return
+	}
+
 	var pushData PushData
 	if err := c.ShouldBindJSON(&pushData); err != nil {
 		log.Printf("err:%s\n", err.Error())
@@ -49,7 +55,7 @@ func (hs *httpServer) pushHandler(c *gin.Context) {
 		return
 	}
 
-	topic := hs.server.GetTopic("test")
+	topic := hs.server.GetTopic(topicName)
 	msg := NewMessage(topic.GenerateID(), b)
 	err = topic.PutMessage(msg)
 	if err != nil {
@@ -68,10 +74,16 @@ type PopData struct {
 }
 
 func (hs *httpServer) popHandler(c *gin.Context) {
+	topicName := c.Query("topic")
+	if topicName == "" || topicName == "topic-pending-msg" {
+		response.FailWithMessage("topic name error", c)
+		return
+	}
+
 	var msg *Message
 	var buf []byte
 	var err error
-	topic := hs.server.GetTopic("test")
+	topic := hs.server.GetTopic(topicName)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -112,6 +124,12 @@ type FinishAckData struct {
 }
 
 func (hs *httpServer) finishHandler(c *gin.Context) {
+	topicName := c.Query("topic")
+	if topicName == "" || topicName == "topic-pending-msg" {
+		response.FailWithMessage("topic name error", c)
+		return
+	}
+
 	var finAckData FinishAckData
 	if err := c.ShouldBindJSON(&finAckData); err != nil {
 		log.Printf("err:%s\n", err.Error())
@@ -119,7 +137,7 @@ func (hs *httpServer) finishHandler(c *gin.Context) {
 		return
 	}
 	//log.Println("msg id :", finAckData.ID)
-	topic := hs.server.GetTopic("test")
+	topic := hs.server.GetTopic(topicName)
 	err := topic.FinishMessage(finAckData.ID)
 
 	if err != nil {

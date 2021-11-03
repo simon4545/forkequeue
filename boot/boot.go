@@ -27,5 +27,5 @@ func main() {
 		log.Fatalf("failed to persist metadata - %s\n", err)
 	}
 
-	log.Println(server.Main())
+	server.Main()
 }

@@ -1,7 +1,9 @@
 package levelqueue
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"forkequeue/internal/util"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -10,9 +12,12 @@ import (
 	"math/rand"
 	"net/http"
 	"os"
+	"os/signal"
 	"path"
 	"sync"
 	"sync/atomic"
+	"syscall"
+	"time"
 )
 
 type Server struct {
@@ -214,6 +219,7 @@ func (s *Server) Exit() {
 	s.Unlock()
 	close(s.exitChan)
 	s.waitGroup.Wait()
+	s.pendingDB.Close()
 }
 
 func New(opts *Options) *Server {
@@ -236,8 +242,32 @@ func (s *Server) InitPendingDB() error {
 	return nil
 }
 
-func (s *Server) Main() error {
+func (s *Server) Main() {
 	httpServer := newHttpServer(s)
-	hs := http.Server{Addr: ":8989", Handler: httpServer.router}
-	return hs.ListenAndServe()
+	hs := http.Server{Addr: s.getOpts().HTTPAddress, Handler: httpServer.router}
+
+	go func() {
+		if err := hs.ListenAndServe(); err != nil && errors.Is(err, http.ErrServerClosed) {
+			log.Printf("listen: %s\n", err)
+		}
+	}()
+
+	quit := make(chan os.Signal)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down http server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+
+	//first shutdown http server
+	err := hs.Shutdown(ctx)
+	if err != nil {
+		log.Println("HTTP Server forced to shutdown:", err)
+	}
+	log.Println("HTTP Server exiting")
+	//second exit topic and queue
+	s.Exit()
+
+	log.Println("Server exiting")
 }
