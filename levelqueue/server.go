@@ -32,6 +32,10 @@ type Server struct {
 	isLoading  int32
 	isExiting  int32
 	notifyChan chan interface{}
+
+	poolSize int
+
+	startTime time.Time
 }
 
 func (s *Server) getOpts() *Options {
@@ -227,6 +231,7 @@ func New(opts *Options) *Server {
 		topicMap:   make(map[string]*Topic),
 		exitChan:   make(chan int),
 		notifyChan: make(chan interface{}, 1),
+		startTime:  time.Now(),
 	}
 	s.storeOpts(opts)
 	return s
@@ -242,7 +247,109 @@ func (s *Server) InitPendingDB() error {
 	return nil
 }
 
+//resizePool adjusts the size of the pool of pendingScanWorker goroutines
+//1 <= pool <= min(num * 0.25, PendingScanWorkerPoolMax)
+func (s *Server) resizePool(num int, workCh chan *Topic, responseCh chan bool, closeCh chan int) {
+	poolSize := int(float64(num) * 0.25)
+	if poolSize < 1 {
+		poolSize = 1
+	} else if poolSize > s.getOpts().PendingScanWorkerPoolMax {
+		poolSize = s.getOpts().PendingScanWorkerPoolMax
+	}
+
+	for {
+		if poolSize == s.poolSize {
+			break
+		} else if poolSize < s.poolSize {
+			closeCh <- 1
+			s.poolSize--
+		} else {
+			s.waitGroup.Wrap(func() {
+				s.pendingScanWorker(workCh, responseCh, closeCh)
+			})
+			s.poolSize++
+		}
+	}
+
+}
+
+func (s *Server) pendingScanWorker(workCh chan *Topic, responseCh chan bool, closeCh chan int) {
+	for {
+		select {
+		case t := <-workCh:
+			now := time.Now().UnixNano()
+			dirty := false
+			if t.processInAckQueue(now) {
+				dirty = true
+			}
+			responseCh <- dirty
+		case <-closeCh:
+			return
+		}
+	}
+}
+
+func (s *Server) pendingMsgScanLoop() {
+	workCh := make(chan *Topic, s.getOpts().PendingScanSelectionCount)
+	responseCh := make(chan bool, s.getOpts().PendingScanSelectionCount)
+	closeCh := make(chan int)
+
+	workerTicker := time.NewTicker(s.getOpts().PendingScanInterval)
+	refreshTicker := time.NewTicker(s.getOpts().PendingScanRefreshInterval)
+
+	topics := s.topics()
+	s.resizePool(len(topics), workCh, responseCh, closeCh)
+
+	for {
+		select {
+		case <-workerTicker.C:
+			if len(topics) == 0 {
+				continue
+			}
+		case <-refreshTicker.C:
+			topics = s.topics()
+			s.resizePool(len(topics), workCh, responseCh, closeCh)
+			continue
+		case <-s.exitChan:
+			goto exit
+		}
+
+		num := s.getOpts().PendingScanSelectionCount
+		if num > len(topics) {
+			num = len(topics)
+		}
+
+	loop:
+		for _, i := range util.UniqRands(num, len(topics)) {
+			workCh <- topics[i]
+		}
+
+		numDirty := 0
+		for i := 0; i < num; i++ {
+			if <-responseCh {
+				numDirty++
+			}
+		}
+
+		if float64(numDirty)/float64(num) > s.getOpts().PendingScanDirtyPercent {
+			goto loop
+		}
+	}
+
+exit:
+	log.Println("PendingScan:closing")
+	close(closeCh)
+	workerTicker.Stop()
+	refreshTicker.Stop()
+}
+
+func (s *Server) GetStartTime() time.Time {
+	return s.startTime
+}
+
 func (s *Server) Main() {
+	s.waitGroup.Wrap(s.pendingMsgScanLoop)
+
 	httpServer := newHttpServer(s)
 	hs := http.Server{Addr: s.getOpts().HTTPAddress, Handler: httpServer.router}
 

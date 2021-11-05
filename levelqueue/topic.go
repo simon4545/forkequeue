@@ -46,8 +46,6 @@ func NewTopic(topicName string, server *Server) *Topic {
 
 	t.initAckQueue()
 
-	t.waitGroup.Wrap(t.pendingMsgLoop)
-
 	t.server.Notify(t)
 	return t
 }
@@ -85,30 +83,6 @@ func (t *Topic) initAckQueue() {
 		}
 	}
 	iter.Release()
-}
-
-func (t *Topic) pendingMsgLoop() {
-	workTicker := time.NewTicker(t.server.getOpts().QueueScanInterval)
-
-	select {
-	case <-t.exitChan:
-		goto exit
-	case <-t.startChan:
-	}
-
-	for {
-		select {
-		case <-workTicker.C:
-			now := time.Now().UnixNano()
-			t.processInAckQueue(now)
-		case <-t.exitChan:
-			goto exit
-		}
-	}
-
-exit:
-	log.Printf("TOPIC(%s): closing ... pendingMsgLoop", t.name)
-	workTicker.Stop()
 }
 
 func (t *Topic) FinishMessage(id MessageID) error {
@@ -199,29 +173,33 @@ func (t *Topic) removeMsgInAckDB(key []byte) error {
 	return t.server.pendingDB.Delete(key, nil)
 }
 
-func (t *Topic) processInAckQueue(time int64) {
+func (t *Topic) processInAckQueue(time int64) bool {
 	t.RLock()
 	defer t.RUnlock()
+
 	if t.Exiting() {
-		return
+		return false
 	}
+
+	dirty := false
 	for {
 		t.inAckMutex.Lock()
 		msg, _ := t.inAckQ.PeekAndShift(time)
 		t.inAckMutex.Unlock()
 
 		if msg == nil {
-			return
+			return dirty
 		}
+		dirty = true
 
 		_, err := t.popInAckMsg(msg.ID)
 		if err != nil {
-			return
+			return dirty
 		}
 
 		err = t.put(msg)
 		if err != nil {
-			continue
+			return dirty
 		}
 		key := append([]byte(t.name), msg.ID[:]...)
 		t.removeMsgInAckDB(key)

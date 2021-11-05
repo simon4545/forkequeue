@@ -28,6 +28,7 @@ func newHttpServer(server *Server) *httpServer {
 	pubGroup.POST("push", hs.pushHandler)
 	pubGroup.POST("pop", hs.popHandler)
 	pubGroup.POST("ack", hs.finishHandler)
+	pubGroup.POST("stats", hs.StatsHandler)
 	return hs
 }
 
@@ -147,5 +148,24 @@ func (hs *httpServer) finishHandler(c *gin.Context) {
 	}
 
 	response.Ok(c)
+	return
+}
+
+func (hs *httpServer) StatsHandler(c *gin.Context) {
+	topicName := c.Query("topic")
+	if topicName == "topic-pending-msg" {
+		response.FailWithMessage("topic name error", c)
+		return
+	}
+
+	stats := hs.server.GetStats(topicName)
+	startTime := hs.server.GetStartTime()
+
+	data := struct {
+		StartTime int64        `json:"start_time"`
+		Topics    []TopicStats `json:"topics"`
+	}{StartTime: startTime.Unix(), Topics: stats.Topics}
+
+	response.OkWithData(data, c)
 	return
 }
