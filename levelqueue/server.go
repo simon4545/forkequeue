@@ -68,6 +68,7 @@ func readOrEmpty(fn string) ([]byte, error) {
 
 func writeSyncFile(fn string, data []byte) error {
 	f, err := os.OpenFile(fn, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	defer f.Close()
 	if err != nil {
 		return err
 	}
@@ -76,7 +77,7 @@ func writeSyncFile(fn string, data []byte) error {
 	if err == nil {
 		err = f.Sync()
 	}
-	f.Close()
+
 	return err
 }
 
