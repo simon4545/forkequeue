@@ -21,7 +21,8 @@ import (
 )
 
 type Server struct {
-	pendingDB *leveldb.DB
+	pendingDB   *leveldb.DB
+	checkSameDB *leveldb.DB
 	sync.RWMutex
 
 	opts atomic.Value
@@ -225,6 +226,7 @@ func (s *Server) Exit() {
 	close(s.exitChan)
 	s.waitGroup.Wait()
 	s.pendingDB.Close()
+	s.checkSameDB.Close()
 }
 
 func New(opts *Options) *Server {
@@ -245,6 +247,16 @@ func (s *Server) InitPendingDB() error {
 		return err
 	}
 	s.pendingDB = db
+	return nil
+}
+
+func (s *Server) InitCheckSameDB() error {
+	filePath := path.Join(s.getOpts().DataPath, "topic-checksame-msg")
+	db, err := leveldb.OpenFile(filePath, nil)
+	if err != nil {
+		return err
+	}
+	s.checkSameDB = db
 	return nil
 }
 

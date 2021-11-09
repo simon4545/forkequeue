@@ -2,6 +2,7 @@ package levelqueue
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"forkequeue/internal/response"
 	"github.com/gin-gonic/gin"
@@ -57,9 +58,18 @@ func (hs *httpServer) pushHandler(c *gin.Context) {
 	}
 
 	topic := hs.server.GetTopic(topicName)
+
+	hash := md5.Sum(b)
+	key := append([]byte(topicName), hash[:]...)
+	if topic.CheckIsExistSameMsg(key) {
+		response.Ok(c)
+		return
+	}
+
 	msg := NewMessage(topic.GenerateID(), b)
 	err = topic.PutMessage(msg)
 	if err != nil {
+		topic.DeleteSameMsg(key)
 		log.Printf("topic(%s) err:%s\n", topic.name, err.Error())
 		response.FailWithMessage("put msg error", c)
 		return

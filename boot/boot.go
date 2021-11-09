@@ -17,6 +17,11 @@ func main() {
 		log.Fatalf("failed to init pendingDB - %s\n", err)
 	}
 
+	err = server.InitCheckSameDB()
+	if err != nil {
+		log.Fatalf("failed to init checkSameDB - %s\n", err)
+	}
+
 	err = server.LoadMetadata()
 	if err != nil {
 		log.Fatalf("failed to load metadata - %s\n", err)

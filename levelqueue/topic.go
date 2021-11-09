@@ -31,6 +31,8 @@ type Topic struct {
 	inAckMessages map[MessageID]*Message
 	inAckQ        inAckQueue
 	inAckMutex    sync.Mutex
+
+	CheckSameMutex sync.Mutex
 }
 
 func NewTopic(topicName string, server *Server) *Topic {
@@ -48,6 +50,29 @@ func NewTopic(topicName string, server *Server) *Topic {
 
 	t.server.Notify(t)
 	return t
+}
+
+func (t *Topic) CheckIsExistSameMsg(key []byte) bool {
+	t.CheckSameMutex.Lock()
+
+	_, err := t.server.checkSameDB.Get(key, nil)
+	if err == nil {
+		t.CheckSameMutex.Unlock()
+		return true
+	}
+
+	t.server.checkSameDB.Put(key, []byte("1"), nil)
+
+	t.CheckSameMutex.Unlock()
+
+	return false
+}
+func (t *Topic) DeleteSameMsg(key []byte) {
+	t.CheckSameMutex.Lock()
+
+	t.server.checkSameDB.Delete(key, nil)
+
+	t.CheckSameMutex.Unlock()
 }
 
 //init ack queue ;reload pending msg from local db
