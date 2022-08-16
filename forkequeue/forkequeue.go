@@ -1,4 +1,4 @@
-package main
+package forkequeue
 
 import (
 	"crypto/md5"
@@ -166,7 +166,4 @@ func Ack(topicName string, finAckData FinishAckData) bool {
 	}
 
 	return true
-}
-func main() {
-
 }

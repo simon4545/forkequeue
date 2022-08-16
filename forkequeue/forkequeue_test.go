@@ -1,10 +1,9 @@
-package main
+package forkequeue
 
 import (
 	"testing"
 
 	"github.com/simon4545/forkequeue/internal/util"
-
 	"github.com/stretchr/testify/assert"
 )
 
