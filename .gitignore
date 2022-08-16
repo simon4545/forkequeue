@@ -108,3 +108,5 @@ dist
 
 # queue msg storage
 data
+
+.vscode

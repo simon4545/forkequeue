@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"crypto/md5"
 	"encoding/json"
 	"errors"
@@ -29,9 +28,10 @@ type PopData struct {
 
 var server *levelqueue.Server
 
-func Init() bool {
+func Init(dbPath string) bool {
 	rand.Seed(time.Now().UnixNano())
 	opts := levelqueue.NewOptions()
+	opts.DataPath = dbPath
 	server = levelqueue.New(opts)
 
 	err := server.InitPendingDB()
@@ -58,7 +58,9 @@ func Init() bool {
 	}
 	return true
 }
-
+func Close() {
+	server.Close()
+}
 func Pop(topicName string) (*PopData, error) {
 	if topicName == "" || topicName == "topic-pending-msg" {
 		log.Fatalf("topic name error")
@@ -70,11 +72,15 @@ func Pop(topicName string) (*PopData, error) {
 	var err error
 	topic := server.GetTopic(topicName)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	// ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// defer cancel()
+	timer := time.NewTimer(time.Second * 5)
+	// timeAfterTrigger := time.After(time.Second * 5)
+
 	select {
-	case <-ctx.Done():
-		log.Fatalf("pop timeout")
+	case <-timer.C:
+		// log.Panicln("pop timeout")
+		timer.Stop()
 		return nil, errors.New("pop timeout")
 	case buf = <-topic.ReadChan():
 		msg, err = levelqueue.DecodeMessage(buf)
@@ -88,7 +94,7 @@ func Pop(topicName string) (*PopData, error) {
 			log.Printf("topic(%s) err:%s\n", topic.Name(), err.Error())
 		}
 	}
-
+	timer.Stop()
 	var popData PopData
 	var jsData PushData
 	if err := json.Unmarshal(msg.Body, &jsData); err != nil {

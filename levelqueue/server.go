@@ -363,7 +363,13 @@ exit:
 func (s *Server) GetStartTime() time.Time {
 	return s.startTime
 }
-
+func (s *Server) Close() {
+	s.checkSameDB.Close()
+	s.pendingDB.Close()
+	for _, value := range s.topicMap {
+		value.queue.ldb.Close()
+	}
+}
 func (s *Server) Main() {
 	// s.waitGroup.Wrap(s.pendingMsgScanLoop)
 
