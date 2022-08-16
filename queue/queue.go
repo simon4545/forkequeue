@@ -1,4 +1,4 @@
-package forkequeue
+package queue
 
 import (
 	"crypto/md5"
