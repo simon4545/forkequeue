@@ -5,10 +5,11 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"forkequeue/internal/response"
-	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
 )
 
 type httpServer struct {
@@ -103,7 +104,7 @@ func (hs *httpServer) popHandler(c *gin.Context) {
 		response.FailWithMessage("pop timeout", c)
 		return
 	case buf = <-topic.ReadChan():
-		msg, err = decodeMessage(buf)
+		msg, err = DecodeMessage(buf)
 		if err != nil {
 			response.FailWithMessage("decode queue msg error", c)
 			return

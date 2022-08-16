@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"forkequeue/internal/util"
-	"github.com/syndtr/goleveldb/leveldb"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -18,6 +17,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 type Server struct {
@@ -207,7 +208,9 @@ func (s *Server) Notify(v interface{}) {
 		}
 	})
 }
-
+func (s *Server) WaitGroup() util.WaitGroupWrapper {
+	return s.waitGroup
+}
 func (s *Server) Exit() {
 	if !atomic.CompareAndSwapInt32(&s.isExiting, 0, 1) {
 		return
@@ -247,6 +250,7 @@ func (s *Server) InitPendingDB() error {
 		return err
 	}
 	s.pendingDB = db
+	s.waitGroup.Wrap(s.pendingMsgScanLoop)
 	return nil
 }
 
@@ -260,8 +264,8 @@ func (s *Server) InitCheckSameDB() error {
 	return nil
 }
 
-//resizePool adjusts the size of the pool of pendingScanWorker goroutines
-//1 <= pool <= min(num * 0.25, PendingScanWorkerPoolMax)
+// resizePool adjusts the size of the pool of pendingScanWorker goroutines
+// 1 <= pool <= min(num * 0.25, PendingScanWorkerPoolMax)
 func (s *Server) resizePool(num int, workCh chan *Topic, responseCh chan bool, closeCh chan int) {
 	poolSize := int(float64(num) * 0.25)
 	if poolSize < 1 {
@@ -361,7 +365,7 @@ func (s *Server) GetStartTime() time.Time {
 }
 
 func (s *Server) Main() {
-	s.waitGroup.Wrap(s.pendingMsgScanLoop)
+	// s.waitGroup.Wrap(s.pendingMsgScanLoop)
 
 	httpServer := newHttpServer(s)
 	hs := http.Server{Addr: s.getOpts().HTTPAddress, Handler: httpServer.router}

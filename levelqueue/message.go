@@ -99,11 +99,12 @@ func (m *Message) WriteToAckDB(w io.Writer) (int64, error) {
 // |       (int64)        ||    ||      (hex string encoded in ASCII)           || (binary)
 // |       8-byte         ||    ||                 16-byte                      || N-byte
 // ------------------------------------------------------------------------------------------...
-//   nanosecond timestamp    ^^                   message ID                       message body
-//                        (uint16)
-//                         2-byte
-//                        attempts
-func decodeMessage(b []byte) (*Message, error) {
+//
+//	nanosecond timestamp    ^^                   message ID                       message body
+//	                     (uint16)
+//	                      2-byte
+//	                     attempts
+func DecodeMessage(b []byte) (*Message, error) {
 	var msg Message
 
 	if len(b) < minValidMsgLength {
@@ -118,7 +119,7 @@ func decodeMessage(b []byte) (*Message, error) {
 	return &msg, nil
 }
 
-func decodeAckMsg(b []byte) (*Message, error) {
+func DecodeAckMsg(b []byte) (*Message, error) {
 	var msg Message
 
 	if len(b) < minValidMsgLength+8 {

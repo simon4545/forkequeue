@@ -2,13 +2,14 @@ package levelqueue
 
 import (
 	"forkequeue/internal/util"
-	"github.com/syndtr/goleveldb/leveldb/errors"
-	util2 "github.com/syndtr/goleveldb/leveldb/util"
 	"log"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/syndtr/goleveldb/leveldb/errors"
+	util2 "github.com/syndtr/goleveldb/leveldb/util"
 )
 
 type Topic struct {
@@ -67,6 +68,9 @@ func (t *Topic) CheckIsExistSameMsg(key []byte) bool {
 
 	return false
 }
+func (t *Topic) Name() string {
+	return t.name
+}
 func (t *Topic) DeleteSameMsg(key []byte) {
 	t.CheckSameMutex.Lock()
 
@@ -75,7 +79,7 @@ func (t *Topic) DeleteSameMsg(key []byte) {
 	t.CheckSameMutex.Unlock()
 }
 
-//init ack queue ;reload pending msg from local db
+// init ack queue ;reload pending msg from local db
 func (t *Topic) initAckQueue() {
 	qSize := int(math.Max(1, float64(t.server.getOpts().MemQueueSize)/10))
 
@@ -87,7 +91,7 @@ func (t *Topic) initAckQueue() {
 		now := time.Now().UnixNano()
 		key := iter.Key()
 		value := iter.Value()
-		msg, err := decodeAckMsg(value)
+		msg, err := DecodeAckMsg(value)
 		if err != nil {
 			continue
 		}
@@ -193,7 +197,7 @@ func (t *Topic) addToInAckDB(msg *Message) error {
 	return t.server.pendingDB.Put(key, buf.Bytes(), nil)
 }
 
-//remove leveldb in ack msg
+// remove leveldb in ack msg
 func (t *Topic) removeMsgInAckDB(key []byte) error {
 	return t.server.pendingDB.Delete(key, nil)
 }
