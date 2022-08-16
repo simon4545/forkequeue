@@ -1,12 +1,13 @@
 package levelqueue
 
 import (
-	"forkequeue/internal/util"
 	"log"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/simon4545/forkequeue/internal/util"
 
 	"github.com/syndtr/goleveldb/leveldb/errors"
 	util2 "github.com/syndtr/goleveldb/leveldb/util"

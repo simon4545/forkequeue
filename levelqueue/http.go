@@ -4,10 +4,11 @@ import (
 	"context"
 	"crypto/md5"
 	"encoding/json"
-	"forkequeue/internal/response"
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/simon4545/forkequeue/internal/response"
 
 	"github.com/gin-gonic/gin"
 )

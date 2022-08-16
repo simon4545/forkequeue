@@ -1,10 +1,11 @@
 package main
 
 import (
-	"forkequeue/levelqueue"
 	"log"
 	"math/rand"
 	"time"
+
+	"github.com/simon4545/forkequeue/levelqueue"
 )
 
 func main() {

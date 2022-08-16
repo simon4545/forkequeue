@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"forkequeue/internal/util"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -17,6 +16,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/simon4545/forkequeue/internal/util"
 
 	"github.com/syndtr/goleveldb/leveldb"
 )

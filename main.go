@@ -4,10 +4,11 @@ import (
 	"crypto/md5"
 	"encoding/json"
 	"errors"
-	"forkequeue/levelqueue"
 	"log"
 	"math/rand"
 	"time"
+
+	"github.com/simon4545/forkequeue/levelqueue"
 )
 
 type StatData struct {
@@ -165,4 +166,7 @@ func Ack(topicName string, finAckData FinishAckData) bool {
 	}
 
 	return true
+}
+func main() {
+
 }

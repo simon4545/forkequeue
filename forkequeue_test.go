@@ -1,8 +1,9 @@
 package main
 
 import (
-	"forkequeue/internal/util"
 	"testing"
+
+	"github.com/simon4545/forkequeue/internal/util"
 
 	"github.com/stretchr/testify/assert"
 )
