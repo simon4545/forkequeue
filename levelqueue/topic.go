@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/simon4545/forkequeue/internal/util"
+	"github.com/simon4545/forkequeue/util"
 
 	"github.com/syndtr/goleveldb/leveldb/errors"
 	util2 "github.com/syndtr/goleveldb/leveldb/util"
