@@ -1,4 +1,4 @@
-package main
+package forkequeue
 
 import (
 	"testing"
