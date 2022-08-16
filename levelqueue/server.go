@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/simon4545/forkequeue/internal/util"
+	"github.com/simon4545/forkequeue/util"
 
 	"github.com/syndtr/goleveldb/leveldb"
 )

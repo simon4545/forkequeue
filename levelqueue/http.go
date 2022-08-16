@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/simon4545/forkequeue/internal/response"
+	"github.com/simon4545/forkequeue/response"
 
 	"github.com/gin-gonic/gin"
 )
