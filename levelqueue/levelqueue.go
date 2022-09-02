@@ -2,12 +2,13 @@ package levelqueue
 
 import (
 	"encoding/binary"
-	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/errors"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 	"log"
 	"path"
 	"sync"
+
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/errors"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 // levelQueue implements a filesystem backed FIFO queue
@@ -22,7 +23,6 @@ type levelQueue struct {
 	dataPath string
 
 	exitFlag int32
-	needSync bool
 
 	nextReadPos uint64
 
@@ -34,25 +34,16 @@ type levelQueue struct {
 	readChan chan []byte
 
 	// internal channels
-	writeChan         chan []byte
-	writeResponseChan chan error
-	emptyChan         chan int
-	emptyResponseChan chan error
-	exitChan          chan int
-	exitSyncChan      chan int
+	exitChan chan int
+	// exitSyncChan chan int
 }
 
 func NewQueue(name string, dataPath string) *levelQueue {
 	l := levelQueue{
-		name:              name,
-		dataPath:          dataPath,
-		readChan:          make(chan []byte),
-		writeChan:         make(chan []byte),
-		writeResponseChan: make(chan error),
-		emptyChan:         make(chan int),
-		emptyResponseChan: make(chan error),
-		exitChan:          make(chan int),
-		exitSyncChan:      make(chan int),
+		name:     name,
+		dataPath: dataPath,
+		readChan: make(chan []byte),
+		exitChan: make(chan int),
 	}
 
 	err := l.loadData()
@@ -71,9 +62,18 @@ func (l *levelQueue) Push(data []byte) error {
 	if l.exitFlag == 1 {
 		return errors.New("exiting")
 	}
+	pos := make([]byte, 8)
+	binary.BigEndian.PutUint64(pos, l.writePos)
+	if err := l.ldb.Put(pos, data, l.wOptions); err != nil {
+		return err
+	}
 
-	l.writeChan <- data
-	return <-l.writeResponseChan
+	binary.BigEndian.PutUint64(pos, l.writePos+1)
+	if err := l.ldb.Put([]byte("_writePosition"), pos, l.wOptions); err != nil {
+		return err
+	}
+	l.writePos += 1
+	return nil
 }
 
 func (l *levelQueue) Pop() <-chan []byte {
@@ -87,7 +87,8 @@ func (l *levelQueue) Close() error {
 	l.exitFlag = 1
 
 	close(l.exitChan)
-	<-l.exitSyncChan
+	<-l.exitChan
+	log.Printf("QUEUE(%s): closing... ioLoop\n", l.name)
 
 	if l.ldb != nil {
 		return l.ldb.Close()
@@ -97,7 +98,7 @@ func (l *levelQueue) Close() error {
 }
 
 func (l *levelQueue) loadData() error {
-	filePath := l.ldbFilePath()
+	filePath := path.Join(l.dataPath, l.name)
 	db, err := leveldb.OpenFile(filePath, nil)
 	if err != nil {
 		return err
@@ -126,10 +127,6 @@ func (l *levelQueue) loadData() error {
 	l.writePos = writePosition
 
 	return nil
-}
-
-func (l *levelQueue) ldbFilePath() string {
-	return path.Join(l.dataPath, l.name)
 }
 
 func (l *levelQueue) readOne() ([]byte, error) {
@@ -166,53 +163,24 @@ func (l *levelQueue) modifyPosition() {
 	l.readPos = l.nextReadPos
 }
 
-func (l *levelQueue) writeOne(data []byte) error {
-	pos := make([]byte, 8)
-	binary.BigEndian.PutUint64(pos, l.writePos)
-	if err := l.ldb.Put(pos, data, l.wOptions); err != nil {
-		return err
-	}
-
-	binary.BigEndian.PutUint64(pos, l.writePos+1)
-	if err := l.ldb.Put([]byte("_writePosition"), pos, l.wOptions); err != nil {
-		return err
-	}
-	l.writePos += 1
-
-	return nil
-}
-
 func (l *levelQueue) ioLoop() {
 	var dataRead []byte
-	var r chan []byte
+	// var r chan []byte
 	var err error
-
+	// go func() {
+	// 	l.exitSyncChan <- 1
+	// }()
 	for {
-
 		if l.readPos < l.writePos {
-			if l.nextReadPos == l.readPos {
-				dataRead, err = l.readOne()
-				if err != nil {
-					continue
-				}
+			dataRead, err = l.readOne()
+			// if l.nextReadPos == l.readPos {
+			if err != nil {
+				continue
 			}
-			r = l.readChan
-		} else {
-			r = nil
-		}
-
-		select {
-		case r <- dataRead:
+			l.readChan <- dataRead
 			l.modifyPosition()
-		case dataWrite := <-l.writeChan:
-			l.writeResponseChan <- l.writeOne(dataWrite)
-		case <-l.exitChan:
-			goto exit
+			// }
+			// r = l.readChan
 		}
-
 	}
-
-exit:
-	log.Printf("QUEUE(%s): closing... ioLoop\n", l.name)
-	l.exitSyncChan <- 1
 }

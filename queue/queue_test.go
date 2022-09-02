@@ -17,10 +17,10 @@ func TestPush(t *testing.T) {
 }
 func TestPop(b *testing.T) {
 	Init(b.TempDir())
-	data := PushData{Data: 1}
+	data := PushData{Data: 4}
 	Push("test", data)
 	data1, _ := Pop("test")
-	assert.NotEmpty(b, data1)
+	assert.Equal(b, float64(4), data1.Data)
 	Close()
 }
 
